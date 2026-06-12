@@ -1,0 +1,441 @@
+---
+title: "Chapter 2 Appendix: R Script 1 — Data Preparation"
+author: "Sophia Katerina Larson"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#R Script 1 - Data Preperation
+```{r}
+# APPENDIX — Chapter 2, R Script 1: Data Preparation & Complete-Case Assembly
+# Predictors of FSDMP Soil Disturbance Class Assignment, GMNF, Vermont
+
+# READ ME FIRST (for anyone running this on their own data)
+
+# This script takes a raw FSDMP-style monitoring file and turns it into a clean, complete-case dataset ready for modeling. It produces TWO saved datasets:
+
+#   cleandat_expanded.rda  - the MAIN dataset. Every row has a value for every
+#                            variable used in the model (no missing values).
+#                            This is what the model in R Script 2 is built on.
+#
+#   cleandat_no_slope.rda  - a SENSITIVITY dataset, optional. In this Chapter 2 study,
+#                            the slope variables had the most missing values,
+#                            so they dropped the most rows during cleaning.
+#                            This second dataset removes the slope variables
+#                            BEFORE cleaning, which keeps more rows, and lets
+#                            us check whether results hold on a larger sample.
+#                            If slope is not your biggest source of missing
+#                            data, this dataset can be ignored, or adapt it to drop whatever
+#                            variable is dropping the most rows in your file
+#                            (see the missing-data summary chunk to find that).
+#
+# Run this Script FIRST, then Script 2.
+
+# TO RUN ON YOUR OWN DATA:
+#  1. Supply a CSV matching the variable list below.
+#  2. Set the file name + expected counts in USER SETTINGS.
+#  3. Edit the four "ADAPT THIS TO YOUR DATA" blocks in the recoding chunk.
+#
+# Missing coded as -999/blank/"NA"/"MISSING". Binary = 0/1.
+#
+#Dataset variable labels:
+#   Y   = FSDMP Estimated Soil Disturbance Class (FSDMP Class 0, 1, 2, 3)
+#   X0  = FSDMP Project ID (harvest location)
+#   X1  = FSDMP Unit ID
+#   X2  = FSDMP Project Type
+#   X3  = FSDMP Treatment
+#   X4  = FSDMP Slope (%) 
+#   X5  = FSDMP Aspect (degrees or direction)
+#   X6  = FSDMP Elevation (ft)
+#   X7  = FSDMP Acres
+#   X8  = FSDMP Watershed Condition Class 
+#   X9  = FSDMP Parent Material 
+#   X10 = FSDMP Soil Classification 
+#   X11 = FSDMP Depth to Bedrock (in)
+#   X12 = FSDMP Harvest Season 
+#   X13 = FSDMP Harvest Year 
+#   X14 = FSDMP Harvest System 
+#   X15 = FSDMP Sample Point
+#   X16 = FSDMP Observer ( names retained for modeling; anonymized in Script 2 display only)
+#   X17 = FSDMP Latitude
+#   X18 = FSDMP Longitude
+#   X19 = FSDMP Datum
+#   X20 = FSDMP UTM East
+#   X21 = FSDMP UTM North
+#   X22 = FSDMP UTM Zone
+#   X23 = FSDMP Date
+#   X24 = FSDMP Monitoring Type 
+#   X25 = FSDMP Point Spacing (m)
+#   X26 = FSDMP Confidence Level
+#   X27 = FSDMP Minimum Required Sample Size
+#   X28 = FSDMP Interval Width                              
+#   X29 = FSDMP Forest Floor Depth (cm)                    
+#   X30 = FSDMP Forest Floor Impacted                      
+#   X31 = FSDMP Live Plant
+#   X32 = FSDMP Invasive Plant
+#   X33 = FSDMP Fine Woody <7 cm
+#   X34 = FSDMP Coarse Woody >7 cm
+#   X35 = FSDMP Bare Soil
+#   X36 = FSDMP Rock
+#   X37 = FSDMP Topsoil Displacement                      
+#   X38 = FSDMP Erosion
+#   X39 = FSDMP Rutting <5 cm
+#   X40 = FSDMP Rutting 5–10 cm
+#   X41 = FSDMP Rutting >10 cm
+#   X42 = FSDMP Burning Light
+#   X43 = FSDMP Burning Moderate 
+#   X44 = FSDMP Burning Severe 
+#   X45 = FSDMP Compaction 0–10 cm                         
+#   X46 = FSDMP Compaction 10–30 cm 
+#   X47 = FSDMP Compaction >30 cm 
+#   X48 = FSDMP Platy/Massive/Puddled Structure 0–10 cm  
+#   X49 = FSDMP Platy/Massive/Puddled 10–30 cm 
+#   X50 = FSDMP Platy/Massive/Puddled >30 cm 
+#   X51 = FSDMP Mixed Topsoil/Subsoil
+#   X52 = FSDMP Detrimental (Yes=1, No=0)
+#   X53 = FSDMP Notes
+#   X54 = gSSURGO Soil Series Name
+#   X55 = gSSURGO Soil Texture 
+#   X56 = gSSURGO Slope 
+#   X57 = gSSURGO Surface Rock Fragment
+#   X58 = SOLUS100 Clay total, 5 cm (%)
+#   X59 = SOLUS100 Clay total, 15 cm (%)
+#   X60 = SOLUS100 Clay total, 30 cm (%)
+#   X61 = SOLUS100 Silt total, 5 cm (%)
+#   X62 = SOLUS100 Silt total, 15 cm (%)
+#   X63 = SOLUS100 Silt total, 30 cm (%)             
+#   X64 = SOLUS100 Sand total, 5 cm (%)
+#   X65 = SOLUS100 Sand total, 15 cm (%)
+#   X66 = SOLUS100 Sand total, 30 cm (%)
+#   X67 = SOLUS100 Depth to bedrock cm
+#   X68 = SOLUS100 Bulk density, 5 cm (g/cm3)
+#   X69 = SOLUS100 Bulk density, 15 cm (g/cm3)       
+#   X70 = SOLUS100 Bulk density, 30 cm (g/cm3)
+#   X71 = SOLUS100 Rock fragments >2mm, 5 cm (% vol)
+#   X72 = SOLUS100 Rock fragments >2mm, 15 cm (% vol)
+#   X73 = SOLUS100 Rock fragments >2mm, 30 cm (% vol)
+```
+
+#User Settings
+```{r}
+#USER SETTINGS: edit these for your own run on your own data
+# Input your data.
+
+input_file <- "LOAD YOUR DATA HERE"  
+
+# Expected complete-case row counts. These are a SELF-CHECK, not an input — the script counts the rows it actually keeps and compares to these numbers.
+# These values (1144 / 1723) are the counts for this dissertation's Chapter 2 data.
+# If you are reproducing the dissertation, leave them as is; the script will print "CHECK PASSED" when it reproduces the expected sample.
+# If you are running your OWN data, set these to the counts you expect, or set them to NA to turn the check off entirely.
+expected_primary_n     <- 1144
+expected_sensitivity_n <- 1723
+```
+
+#Load Packages
+```{r}
+# tidyverse/dplyr are used throughout for the recoding and cleaning steps.
+library(tidyverse)
+library(dplyr)
+```
+
+#Utility Functions
+```{r}
+# Two small helper functions used during recoding.
+
+# clean_chr(): tidies a text column. It trims stray spaces and turns the various ways "missing" can appear (-999, blank, "NA", "n/a", "missing") into a true R missing value (NA), so they are all handled consistently.
+clean_chr <- function(x) {
+  z <- stringr::str_squish(as.character(x))
+  z[z %in% c("-999", "", "na", "n/a", "missing", "MISSING", "NA")] <- NA
+  z
+}
+
+# recode_binary(): turns a 0/1 column into a labeled yes/no factor, so model output reads as "1=Compaction" (for example) instead of just 1. Missing stays missing.
+recode_binary <- function(x, yes_label = "Yes", no_label = "No") {
+  xn <- suppressWarnings(as.numeric(clean_chr(x)))
+  factor(dplyr::case_when(
+    is.na(xn) ~ NA_character_,
+    xn == 0   ~ no_label,
+    xn == 1   ~ yes_label,
+    TRUE      ~ NA_character_
+  ), levels = c(no_label, yes_label), ordered = FALSE)
+}
+```
+
+#Load Data
+```{r}
+# Reads in the datafile named in USER SETTINGS into R. In "input_file" LOAD YOUR OWN DATA HERE
+indat <- read.csv(input_file, header = TRUE, sep = ",")
+indat <- as.data.frame(indat)
+
+if ("X53" %in% names(indat)) indat <- subset(indat, select = -X53)  # drop notes column (X53 = FSDMP Notes)
+indat[indat == -999] <- NA                                          # -999 = missing
+indat <- indat %>% mutate(across(where(is.character), trimws))      # trim stray spaces
+cat("Raw dataset:", nrow(indat), "rows,", ncol(indat), "columns\n")
+```
+
+#Recoding the Data
+```{r}
+# This chunk converts every raw column into a model-ready version (named with a "_recode" suffix). The pattern is: clean the text, then map it to numbers or labeled categories. Most blocks are generic, but FOUR are specific to this study's data and are marked "ADAPT THIS TO YOUR DATA" — you must edit those to match the exact category names and ranges in YOUR file:
+# X4 FSMDP Slope ranges        (your data may use different range labels)
+# X6 FSDMP elevation ranges    (your data may use different range labels)
+# X3 treatment                 (your file's harvest-type might be different)
+# X16 observer names           (your FSDMP surveyors' names will differ - make sure to make this anonymous in final display)
+# Every other variable should work as-is if your columns use the same X-numbers listed in the variable dictionary.
+
+indat <- indat %>%
+  mutate(
+
+    # Response: Y = disturbance class (0-3)
+    Y_recode = factor(clean_chr(Y),
+                      levels = sort(unique(na.omit(as.numeric(clean_chr(Y))))),
+                      ordered = TRUE),
+
+    # 4.2  X4 = Slope (%)  -- ADAPT THIS TO YOUR DATA
+    # Text ranges -> numeric midpoints. Edit to match yours.
+    X4_recode = case_when(
+      clean_chr(X4) %in% c("0-10", "5")            ~ 5,
+      clean_chr(X4) == "6"                         ~ 6,
+      clean_chr(X4) == "0-15"                      ~ 7.5,
+      clean_chr(X4) == "8"                         ~ 8,
+      clean_chr(X4) == "10"                        ~ 10,
+      clean_chr(X4) == "12"                        ~ 12,
+      clean_chr(X4) == "13"                        ~ 13,
+      clean_chr(X4) %in% c("10-20", "15")          ~ 15,
+      clean_chr(X4) == "12-20"                     ~ 16,
+      clean_chr(X4) == "10-25"                     ~ 17.5,
+      clean_chr(X4) %in% c("15-25", "20", "10-30") ~ 20,
+      clean_chr(X4) %in% c("20-30", "25")          ~ 25,
+      clean_chr(X4) == "25-30"                     ~ 27.5,
+      clean_chr(X4) %in% c("20-40", "30")          ~ 30,
+      TRUE ~ suppressWarnings(as.numeric(clean_chr(X4)))
+    ),
+
+    # 4.3  X6 = Elevation (ft)  -- ADAPT THIS TO YOUR DATA
+    # Text ranges -> midpoint -> binned to 200-ft increments.
+    X6_recode_num = case_when(
+      clean_chr(X6) == "1100-1200"                   ~ 1150,
+      clean_chr(X6) == "1600-1800"                   ~ 1700,
+      stringr::str_detect(clean_chr(X6), "^2200-24") ~ 2300,
+      clean_chr(X6) == "2500-2700"                   ~ 2600,
+      TRUE ~ suppressWarnings(as.numeric(clean_chr(X6)))
+    ),
+    X6_recode = case_when(
+      is.na(X6_recode_num) ~ NA_real_,
+      X6_recode_num < 1200 ~ 1100,
+      X6_recode_num < 1400 ~ 1300,
+      X6_recode_num < 1600 ~ 1500,
+      X6_recode_num < 1800 ~ 1700,
+      X6_recode_num < 2000 ~ 1900,
+      X6_recode_num < 2200 ~ 2100,
+      X6_recode_num < 2400 ~ 2300,
+      X6_recode_num < 2600 ~ 2500,
+      X6_recode_num < 2800 ~ 2700,
+      TRUE                 ~ 2900
+    ),
+
+    # 4.4  X7 = Acres (binned midpoints)
+    X7_num    = suppressWarnings(as.numeric(clean_chr(X7))),
+    X7_recode = case_when(
+      is.na(X7_num)              ~ NA_real_,
+      X7_num >= 0  & X7_num < 5  ~ 2.5,
+      X7_num >= 5  & X7_num < 10 ~ 7.5,
+      X7_num >= 10 & X7_num < 15 ~ 12.5,
+      X7_num >= 15 & X7_num < 20 ~ 17.5,
+      X7_num >= 20 & X7_num < 25 ~ 22.5,
+      X7_num >= 25 & X7_num < 30 ~ 27.5,
+      X7_num >= 30 & X7_num < 40 ~ 35.0,
+      X7_num >= 40 & X7_num < 60 ~ 50.0,
+      TRUE ~ NA_real_
+    ),
+
+    # 4.5  Continuous protocol vars 
+    X25_recode = suppressWarnings(as.numeric(clean_chr(X25))),
+    X26_recode = suppressWarnings(as.numeric(clean_chr(X26))),
+    X27_recode = suppressWarnings(as.numeric(clean_chr(X27))),
+    X28_recode = suppressWarnings(as.numeric(clean_chr(X28))),
+    X29_recode = suppressWarnings(as.numeric(clean_chr(X29))),
+
+    # 4.6  X3 = Treatment  -- ADAPT THIS TO YOUR DATA
+
+    X3_chr    = clean_chr(X3) %>% stringr::str_to_lower(),
+    X3_recode = factor(case_when(
+      X3_chr %in% c("clearcut", "stand clear cut")                       ~ "Clearcut",
+      X3_chr %in% c("commercial thinning", "commercial thin",
+                    "commercial thinning ")                               ~ "Commercial Thinning",
+      X3_chr == "prescribed fire"                                         ~ NA_character_,
+      X3_chr %in% c("shelterwood cut", "shelterwood",
+                    "shelterwood cut (3), clearcut (14)")                 ~ "Shelterwood",
+      X3_chr %in% c("group selection", "selection/gaps",
+                    "selection cut with gaps", "single tree selection")   ~ "Selection Cut System",
+      X3_chr %in% c("aspen establishment", "permenant opening",
+                    "establishment/openings")                             ~ "Establishment/Openings",
+      X3_chr == "improvement cut"                                         ~ "Improvement Cut",
+      TRUE ~ NA_character_
+    ), ordered = FALSE),
+
+    # 4.7  X16 = Observer  -- ADAPT THIS TO YOUR DATA
+    X16_chr   = clean_chr(X16) %>% stringr::str_to_lower() %>%
+      stringr::str_replace_all("\\s*(and|/|&|\\.)\\s*", ",") %>%
+      stringr::str_replace_all("\\s*,\\s*", ","),
+    X16_recode = factor(case_when(
+      stringr::str_detect(X16_chr, "lobe") &
+        !stringr::str_detect(X16_chr, "quintana|mcree|abrams|kuczmarski") ~ "Joshua Lobe",
+      stringr::str_detect(X16_chr, "abrams") &
+        !stringr::str_detect(X16_chr, "quintana|kuczmarski|mcree")        ~ "Rob Abrams",
+      stringr::str_detect(X16_chr, "mcree") &
+        !stringr::str_detect(X16_chr, "quintana|kuczmarski|abrams")       ~ "Laura McRee",
+      X16_chr %in% c("abrams,mcree", "mcree,abrams", "mcree,l,abrams,r")  ~ "Rob Abrams & Laura McRee Group",
+      X16_chr %in% c("waid")                                              ~ "Waid",
+      stringr::str_detect(X16_chr, "kuczmarski") &
+        !stringr::str_detect(X16_chr, "mcree|abrams")                     ~ "Serena Kuczmarski",
+      X16_chr == "kinsey ashe"                                            ~ "Kinsey Ashe",
+      X16_chr %in% c("a,quintana,r,abrams,l,mcree,m,martin",
+                     "angie,quintana,joshua,lobe",
+                     "laura,m,serena,k,angie,q",
+                     "mcree,kuczmarski",
+                     "mcree,quintana,abrams")                             ~ "Other Multi-Person Groups",
+      TRUE                                                                ~ "Other Observers"
+    ), ordered = FALSE),
+
+    # 4.8  Binary indicators.
+    X30_recode = recode_binary(X30, "1=FF Impacted",                  "0=FF Not Impacted"),
+    X37_recode = recode_binary(X37, "1=Topsoil Displacement",         "0=No Topsoil Displacement"),
+    X45_recode = recode_binary(X45, "1=Compaction 0-10cm",            "0=No Compaction 0-10cm"),
+    X48_recode = recode_binary(X48, "1=Platy/Massive/Puddled 0-10cm", "0=No Platy/Massive/Puddled 0-10cm"),
+    X31_recode = recode_binary(X31, "1=Live Plant",        "0=No Live Plant"),
+    X32_recode = recode_binary(X32, "1=Invasive Plant",    "0=No Invasive Plant"),
+    X33_recode = recode_binary(X33, "1=Fine Woody",        "0=No Fine Woody"),
+    X34_recode = recode_binary(X34, "1=Coarse Woody",      "0=No Coarse Woody"),
+    X35_recode = recode_binary(X35, "1=Bare Soil",         "0=No Bare Soil"),
+    X36_recode = recode_binary(X36, "1=Rock",              "0=No Rock"),
+    X38_recode = recode_binary(X38, "1=Erosion",           "0=No Erosion"),
+    X39_recode = recode_binary(X39, "1=Rutting <5cm",      "0=No Rutting <5cm"),
+    X40_recode = recode_binary(X40, "1=Rutting 5-10cm",    "0=No Rutting 5-10cm"),
+    X41_recode = recode_binary(X41, "1=Rutting >10cm",     "0=No Rutting >10cm"),
+    X46_recode = recode_binary(X46, "1=Compaction 10-30cm","0=No Compaction 10-30cm"),
+    X47_recode = recode_binary(X47, "1=Compaction >30cm",  "0=No Compaction >30cm"),
+    X49_recode = recode_binary(X49, "1=Platy/Massive/Puddled 10-30cm", "0=No Platy/Massive/Puddled 10-30cm"),
+    X50_recode = recode_binary(X50, "1=Platy/Massive/Puddled >30cm",   "0=No Platy/Massive/Puddled >30cm"),
+    X51_recode = recode_binary(X51, "1=Mixed Topsoil/Subsoil", "0=No Mixed Topsoil/Subsoil"),
+    X52_recode = recode_binary(X52, "1=Detrimental",       "0=Not Detrimental")
+  )
+
+# Grouping (random-effect) IDs
+indat$LocUnit_recode  <- as.factor(indat$LocUnit)
+indat$Location_recode <- as.factor(indat$X0)
+
+# gSSURGO categorical
+indat$X54_recode <- as.factor(indat$X54)
+indat$X55_recode <- as.factor(indat$X55)
+indat$X57_recode <- as.factor(indat$X57)
+
+# SOLUS100 / gSSURGO numeric 
+indat$X56_recode <- as.numeric(indat$X56)
+indat$X58_recode <- as.numeric(indat$X58)
+indat$X59_recode <- as.numeric(indat$X59)
+indat$X60_recode <- as.numeric(indat$X60)
+indat$X61_recode <- as.numeric(indat$X61)
+indat$X62_recode <- as.numeric(indat$X62)
+indat$X63_recode <- as.numeric(indat$X63)   
+indat$X64_recode <- as.numeric(indat$X64)
+indat$X65_recode <- as.numeric(indat$X65)
+indat$X66_recode <- as.numeric(indat$X66)
+indat$X67_recode <- as.numeric(indat$X67)   
+indat$X68_recode <- as.numeric(indat$X68)
+indat$X69_recode <- as.numeric(indat$X69)   
+indat$X70_recode <- as.numeric(indat$X70)
+indat$X71_recode <- as.numeric(indat$X71)   
+indat$X72_recode <- as.numeric(indat$X72)   
+indat$X73_recode <- as.numeric(indat$X73)   
+
+indat <- indat %>%
+  dplyr::select(-X6_recode_num, -X7_num, -X3_chr, -X16_chr)
+cat("Recoded dataset rows:", nrow(indat), "\n")
+```
+
+#Listwise deletion on broad pool & droplist
+```{r}
+# Listwise deletion on a BROAD pool reproduces this Dissertation's Chapter 2: Section 2.3.1.
+
+# This chunk removes rows with missing values (listwise deletion). This reproduces the screening described in this Dissertation's Chapter 2: Section 2.3.1. — a row had to be complete across this wider set to be kept. If you adapt this to your own data, drop the columns that don't apply to you here.
+
+regdat_broad <- indat %>% dplyr::select(ends_with("_recode"))
+
+droplist <- c("X8_recode","X9_recode","X10_recode","X11_recode","X12_recode",
+              "X13_recode","X14_recode","X24_recode","X25_recode","X26_recode",
+              "X27_recode")
+regdat_broad <- regdat_broad[, !(names(regdat_broad) %in% droplist)]
+cat("Broad pool:", ncol(regdat_broad), "cols,", nrow(regdat_broad), "rows before deletion\n")
+```
+
+#Missing-data summary
+```{r}
+# This chunk reports where the missing values are in the dataset, so you can see what's driving row loss before deletion. The first table lists every variable with missing values, worst first. The second table shows which single variable was the sole reason a row would be dropped. If you're adapting this to your own data, this is how you find YOUR biggest row-loss driver, so you can decide what variable needs to be dropped (if needed).
+
+missing_summary <- data.frame(
+  variable    = names(regdat_broad),
+  n_missing   = sapply(regdat_broad, function(x) sum(is.na(x))),
+  pct_missing = sapply(regdat_broad, function(x) round(mean(is.na(x)) * 100, 1))
+) %>% dplyr::filter(n_missing > 0) %>% dplyr::arrange(desc(n_missing))
+cat("\nVariables with missing values:\n"); print(missing_summary)
+
+missing_per_row <- regdat_broad %>% mutate(across(everything(), is.na)) %>% rowSums()
+single <- apply(regdat_broad[missing_per_row == 1, ], 1, function(x) names(which(is.na(x))))
+cat("\nCulprits for single-missing rows:\n"); print(table(unlist(single)))
+```
+
+#Build datasets & Save datasets
+```{r}
+# This chunk builds the final dataset(s) and saves them to disk for Script 2. model_vars lists the variables the model actually uses (plus the two grouping IDs). If your model uses different predictors, edit this list to match.
+
+model_vars <- c("Y_recode",
+                "X3_recode", "X4_recode", "X7_recode", "X16_recode",
+                "X28_recode", "X29_recode",
+                "X30_recode", "X37_recode", "X45_recode", "X48_recode",
+                "X56_recode",
+                "X63_recode", "X67_recode", "X69_recode",
+                "X71_recode", "X72_recode", "X73_recode",
+                "LocUnit_recode", "Location_recode")
+
+# Primary dataset (the main one used for all reported results in this Dissertation's Chapter 2)
+# na.omit() drops any row still missing a value; we then keep just the model variables. This is the dataset Script 2 loads.
+complete_broad    <- na.omit(regdat_broad)
+cleandat_expanded <- complete_broad[, model_vars]
+cat("\n=== PRIMARY DATASET ===\n")
+cat("Rows retained:", nrow(cleandat_expanded), "\n")
+cat("Percent retained:", round(nrow(cleandat_expanded)/nrow(regdat_broad)*100, 1), "%\n")
+if (!is.na(expected_primary_n)) {
+  if (nrow(cleandat_expanded) != expected_primary_n) {
+    warning("n = ", nrow(cleandat_expanded), " != expected_primary_n = ", expected_primary_n,
+            ". Expected on your own data. On original data, check slope (X4) is text not dates.")
+  } else cat("CHECK PASSED: n =", expected_primary_n, "\n")
+}
+print(table(cleandat_expanded$Y_recode))
+save(cleandat_expanded, file = "cleandat_expanded.rda")
+cat("Saved: cleandat_expanded.rda\n")
+
+# Sensitivity dataset (optional; specific to this study)
+# In this study, specific variables caused the most row loss, so we build a second dataset that removes them before deletion. This keeps more rows and lets us confirm the findings hold on a larger sample. For your own data, check the missing-data summary above, and either dont do this step or do this step and swap in whichever variable(s) you'd want to test removing.
+
+regdat_no_slope   <- regdat_broad %>% dplyr::select(-X4_recode, -X56_recode)
+complete_no_slope <- na.omit(regdat_no_slope)
+cleandat_no_slope <- complete_no_slope[, setdiff(model_vars, c("X4_recode", "X56_recode"))]
+cat("\n=== SENSITIVITY DATASET ===\n")
+cat("Rows retained:", nrow(cleandat_no_slope), "\n")
+if (!is.na(expected_sensitivity_n)) {
+  if (nrow(cleandat_no_slope) != expected_sensitivity_n) {
+    warning("n = ", nrow(cleandat_no_slope), " != expected_sensitivity_n = ", expected_sensitivity_n)
+  } else cat("CHECK PASSED: n =", expected_sensitivity_n, "\n")
+}
+print(table(cleandat_no_slope$Y_recode))
+save(cleandat_no_slope, file = "cleandat_no_slope.rda")
+cat("Saved: cleandat_no_slope.rda\n")
+```
+
+
+
+
+

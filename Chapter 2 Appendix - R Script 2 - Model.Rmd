@@ -1,0 +1,292 @@
+---
+title: "Chapter 2 Appendix: R Script 2 — Model"
+author: "Sophia Katerina Larson"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#R Script 2 - Model
+```{r}
+# APPENDIX — Chapter 2, R Script 2: Final Model
+# Predictors of FSDMP Soil Disturbance Class Assignment, GMNF, Vermont
+
+# READ ME FIRST
+
+# This script loads the clean dataset made by Script 1 and fits the final model reported in this Dissertation's Chapter 2: a multinomial logistic regression model predicting FSDMP soil disturbance class (0, 1, 2, 3). It then produces all the reported numbers — model fit, classification accuracy, the coefficient table (Dissertation Chapter 2 - Table 2.7), and the random-effects variance components.
+
+# RUN SCRIPT 1 FIRST. Script 1 saves "cleandat_expanded.rda"; this script loads it. They must be run in order (Script 1, then Script 2)
+
+# WHAT THE MODEL IS:
+# FSDMP disturbance class 0-3, with Class 0 (undisturbed) as the reference. The model estimates the odds of each higher class vs. Class 0.
+# Fixed-effect predictors: FSDMP field indicators, SOLUS100 geomorphic variables, and harvest treatment type.
+# Random effects: observer identity and management unit (these account for the nested, partially crossed structure of the monitoring data: see Dissertation Chapter 2, Section 2.3.2.3).
+
+# TO RUN ON YOUR OWN DATA:
+# If you ran Script 1 on your own data, the variable names carry over and the model below should run as-is.
+# If you renamed any treatment, observer, or any other categories in Script 1, update the reference levels accordingly 
+```
+
+#User Settings
+```{r}
+# Expected row count of the dataset this script loads. Check this, it confirms you're modeling the right file (fromo Script 1). 1144 is this dissertation'sChapter 2 value.
+# Set to your own expected count, or NA to skip the check.
+
+expected_n <- 1144   #set to your value or NA to skip
+```
+
+#Load Packages
+```{r}
+# dplyr/tidyr: data handling. mclogit: the multinomial model with random effects. flextable/officer: format and export Chapter 2 Table 2.7 to Word.
+
+library(dplyr)
+library(tidyr)
+library(mclogit)
+library(flextable)
+library(officer)
+```
+
+#Load Dataset
+```{r}
+# Loads the clean dataset saved by Script 1 and checks it's the expected size.
+
+load("cleandat_expanded.rda")
+if (!is.na(expected_n) && nrow(cleandat_expanded) != expected_n) {
+  stop("n = ", nrow(cleandat_expanded), " but expected_n = ", expected_n,
+       ". Re-run Script 1, or update expected_n.")
+}
+cat("Loaded: n =", nrow(cleandat_expanded), "\n")
+print(table(cleandat_expanded$Y_recode))
+```
+
+#Convert
+```{r}
+# mclogit needs the data in this form: one row per observation per FSDMP class. Therefore, each monitoring point becomes 4 rows (one for each class 0-3). "Chosen" flags the row matching the class that was actually assigned. The alt_1/alt_2/alt_3 dummies let the model estimate separate effects for class 1, 2, and 3 vs. 0.
+
+# The relevel() lines set the reference category for each predictor. These names must match the labels created in Script 1 — if you renamed categories there, update them here too.
+
+# One row per observation per FSDMP class (4 classes -> 4 rows). alt_1/2/3 = dummies for classes 1/2/3 (0 = reference). relevel() refs must match Script 1 labels.
+
+build_long_dat <- function(dat) {
+  dat$obs_id       <- seq_len(nrow(dat))
+  levs             <- levels(as.factor(dat$Y_recode))
+  long             <- dat[rep(1:nrow(dat), each = length(levs)), ]
+  long$alternative <- rep(levs, times = nrow(dat))
+  long$chosen      <- as.numeric(long$Y_recode == long$alternative)
+  long$alternative <- as.factor(long$alternative)
+  long$alt_slope   <- factor(long$alternative, levels = c("1", "2", "3", "0"))
+  long$alt_1       <- as.numeric(long$alternative == 1)
+  long$alt_2       <- as.numeric(long$alternative == 2)
+  long$alt_3       <- as.numeric(long$alternative == 3)
+  long$X3_recode   <- relevel(long$X3_recode,  ref = "Shelterwood")
+  long$X16_recode  <- relevel(long$X16_recode, ref = "Other Observers")
+  long$X30_recode  <- relevel(long$X30_recode, ref = "0=FF Not Impacted")
+  long$X37_recode  <- relevel(long$X37_recode, ref = "0=No Topsoil Displacement")
+  long$X45_recode  <- relevel(long$X45_recode, ref = "0=No Compaction 0-10cm")
+  long$X48_recode  <- relevel(long$X48_recode, ref = "0=No Platy/Massive/Puddled 0-10cm")
+  long$alternative <- relevel(long$alt_slope,  ref = "0")
+  long
+}
+long_1144 <- build_long_dat(cleandat_expanded)
+```
+
+#Model
+```{r}
+#Fit the Final Model
+
+# This is the final reported model. The (alt_1 + alt_2 + alt_3):(...) part means every predictor gets a separate coefficient for each class-vs-0 comparison.
+# The random = list(...) part adds the two random effects (observer, unit).
+# If you adapt this to your own predictors, edit the variable list below.
+
+model_final <- mclogit(
+  chosen | obs_id ~ alternative + (alt_1 + alt_2 + alt_3):(
+    X30_recode + X45_recode + X37_recode +
+    X63_recode + X67_recode + X69_recode +
+    X71_recode + X72_recode + X73_recode +
+    X3_recode  + X28_recode + X7_recode  +
+    X48_recode + X29_recode),
+  random = list(
+    ~ alt_1 + alt_2 + alt_3 | X16_recode,        # observer
+    ~ alt_1 + alt_2 + alt_3 | LocUnit_recode),   # management unit
+  data = long_1144
+)
+summary(model_final)
+```
+
+#Model Accuracy
+```{r}
+# How often the model's top predicted FSDMP class matches the actual FSDMP class.
+# NOTE: mclogit's random-effects models don't return fitted probabilities directly (fitted() comes back empty), so we rebuild them from the model's linear predictors using softmax (exp / sum of exp) within each observation.
+# Then we take each observation's highest-probability class as the prediction.
+
+long_1144$lp_A2 <- model_final$linear.predictors
+long_1144 <- long_1144 %>%
+  dplyr::group_by(obs_id) %>%
+  dplyr::mutate(fitted_prob = exp(lp_A2) / sum(exp(lp_A2))) %>%
+  dplyr::ungroup()
+
+pred_df <- long_1144 %>%
+  dplyr::group_by(obs_id) %>%
+  dplyr::slice_max(fitted_prob, n = 1) %>%
+  dplyr::ungroup() %>%
+  dplyr::select(obs_id, predicted = alternative, observed = Y_recode)
+
+conf_mat    <- table(Observed = pred_df$observed, Predicted = pred_df$predicted)
+overall_acc <- round(sum(diag(conf_mat)) / sum(conf_mat) * 100, 1)
+byclass_acc <- round(diag(conf_mat) / rowSums(conf_mat) * 100, 1)
+print(conf_mat)
+cat("Overall accuracy:", overall_acc, "%\n"); print(byclass_acc)
+```
+
+#McFadden R²
+```{r}
+# Overall model fit. McFadden's pseudo-R-squared compares the fitted model to a "null" model that only knows the overall FSDMP class proportions.
+
+cp       <- table(cleandat_expanded$Y_recode) / nrow(cleandat_expanded)
+null_dev <- -2 * sum(table(cleandat_expanded$Y_recode) * log(as.numeric(cp)))
+r2_A2    <- round(1 - model_final$deviance / null_dev, 3)
+cat("McFadden pseudo-R-squared:", r2_A2, "\n")
+cat("Approx residual deviance:", round(model_final$deviance, 1), "\n")
+```
+
+#Log loss & Brier
+```{r}
+# Two checks on the model. Each is compared to the same null model (the FSDMP class proportions).
+# Log loss: lower is better. Dissertation Chapter 2 report the % reduction vs. the null.
+# Brier Skill Score: 0 = no better than null, 1 = perfect; higher is better.
+
+prob_wide <- long_1144 %>%
+  dplyr::select(obs_id, alternative, fitted_prob) %>% dplyr::distinct() %>%
+  tidyr::pivot_wider(id_cols = obs_id, names_from = alternative,
+                     values_from = fitted_prob, names_prefix = "p_")
+obs_actual <- long_1144 %>% dplyr::distinct(obs_id, Y_recode) %>%
+  dplyr::rename(observed = Y_recode)
+eval_df <- dplyr::left_join(prob_wide, obs_actual, by = "obs_id") %>%
+  dplyr::mutate(y_0 = as.numeric(observed=="0"), y_1 = as.numeric(observed=="1"),
+                y_2 = as.numeric(observed=="2"), y_3 = as.numeric(observed=="3"))
+eps <- 1e-15
+log_loss <- mean(-(eval_df$y_0*log(pmax(eval_df$p_0,eps)) + eval_df$y_1*log(pmax(eval_df$p_1,eps)) +
+                   eval_df$y_2*log(pmax(eval_df$p_2,eps)) + eval_df$y_3*log(pmax(eval_df$p_3,eps))))
+brier <- mean((eval_df$y_0-eval_df$p_0)^2 + (eval_df$y_1-eval_df$p_1)^2 +
+              (eval_df$y_2-eval_df$p_2)^2 + (eval_df$y_3-eval_df$p_3)^2)
+p_null        <- as.numeric(cp[c("0","1","2","3")])
+null_log_loss <- -sum(p_null * log(pmax(p_null, eps)))
+null_brier <- obs_actual %>%
+  dplyr::mutate(y_0=as.numeric(observed=="0"), y_1=as.numeric(observed=="1"),
+                y_2=as.numeric(observed=="2"), y_3=as.numeric(observed=="3"),
+                b=(y_0-p_null[1])^2+(y_1-p_null[2])^2+(y_2-p_null[3])^2+(y_3-p_null[4])^2) %>%
+  pull(b) %>% mean()
+brier_skill <- 1 - brier / null_brier
+cat("Log Loss:", round(log_loss,2), "| null:", round(null_log_loss,2),
+    "| reduction:", round((1-log_loss/null_log_loss)*100,1), "%\n")
+cat("Brier:", round(brier,2), "| null:", round(null_brier,2),
+    "| Brier Skill Score:", round(brier_skill,2), "\n")
+```
+
+#Values summary
+```{r}
+# Prints all the headline numbers in one place, matching what's reported in this Dissertation's Chapter 2, Section 2.4
+
+cat("=== VALUES REPORTED IN CHAPTER 2 ===\n")
+cat("McFadden pseudo-R2:", r2_A2, "\n")
+cat("Overall accuracy:", overall_acc, "%\n")
+cat("Class 0/1/2/3:", byclass_acc["0"], byclass_acc["1"], byclass_acc["2"], byclass_acc["3"], "%\n")
+cat("Log loss:", round(log_loss,2), "| reduction:", round((1-log_loss/null_log_loss)*100,1), "%\n")
+cat("Brier:", round(brier,2), "| Brier Skill Score:", round(brier_skill,2), "\n")
+```
+
+#Summary Table
+```{r}
+#Builds the reported coefficient table and saves it as a Word file. Pulls the fixed-effect estimates, marks the significant ones (* p <= 0.05), splits them by class comparison, renames the variables to readable labels, orders the rows by predictor group.
+# NOTE: clean_term() below renames variables for display. If you renamed any treatment/observer categories in Script 1, update those labels here too.
+
+coef_df        <- as.data.frame(summary(model_final)$coefficients)
+coef_df$term   <- rownames(coef_df)
+names(coef_df) <- c("Estimate", "Std.Error", "z.value", "p.value", "term")
+sig_code        <- function(p) ifelse(p <= 0.05, "*", "")
+coef_df$display <- paste0(round(coef_df$Estimate, 3), sig_code(coef_df$p.value))
+
+alt1 <- coef_df[grepl("^alt_1:", coef_df$term), ]
+alt2 <- coef_df[grepl("^alt_2:", coef_df$term), ]
+alt3 <- coef_df[grepl("^alt_3:", coef_df$term), ]
+
+clean_term <- function(x) {
+  x <- gsub("^alt_[123]:", "", x)
+  x <- gsub("X30_recode0=FF Not Impacted",              "Forest floor impacted", x)
+  x <- gsub("X45_recode1=Compaction 0-10cm",            "Compaction 0-10 cm", x)
+  x <- gsub("X37_recode1=Topsoil Displacement",         "Topsoil displacement", x)
+  x <- gsub("X63_recode",                               "% silt at 30 cm", x)
+  x <- gsub("X67_recode",                               "Depth to bedrock (cm)", x)
+  x <- gsub("X69_recode",                               "Bulk density at 15 cm (g/cm3)", x)
+  x <- gsub("X71_recode",                               "% rock fragments at 5 cm", x)
+  x <- gsub("X72_recode",                               "% rock fragments at 15 cm", x)
+  x <- gsub("X73_recode",                               "% rock fragments at 30 cm", x)
+  x <- gsub("X3_recodeClearcut",                        "Clearcut", x)
+  x <- gsub("X3_recodeCommercial Thinning",             "Commercial thinning", x)
+  x <- gsub("X3_recodeEstablishment/Openings",          "Establishment/openings", x)
+  x <- gsub("X3_recodeSelection Cut System",            "Selection cut system", x)
+  x <- gsub("X28_recode",                               "FSDMP interval width", x)
+  x <- gsub("X29_recode",                               "Forest floor depth (cm)", x)
+  x <- gsub("X7_recode",                                "Acres", x)
+  x <- gsub("X48_recode1=Platy/Massive/Puddled 0-10cm", "Platy/massive/puddled 0-10 cm", x)
+  x
+}
+alt1$label <- clean_term(alt1$term)
+alt2$label <- clean_term(alt2$term)
+alt3$label <- clean_term(alt3$term)
+
+row_order <- c("Topsoil displacement", "Forest floor impacted",
+  "Compaction 0-10 cm", "Platy/massive/puddled 0-10 cm",
+  "Forest floor depth (cm)", "FSDMP interval width", "Acres",
+  "% silt at 30 cm", "Depth to bedrock (cm)", "Bulk density at 15 cm (g/cm3)",
+  "% rock fragments at 5 cm", "% rock fragments at 15 cm", "% rock fragments at 30 cm",
+  "Clearcut", "Commercial thinning", "Establishment/openings", "Selection cut system")
+group_labels <- c("FSDMP field indicators","","","","","","",
+                  "SOLUS100 geomorphic","","","","","",
+                  "Harvest treatment","","","")
+idx1 <- match(row_order, alt1$label); idx2 <- match(row_order, alt2$label); idx3 <- match(row_order, alt3$label)
+
+table_27 <- data.frame(
+  `Predictor Group` = group_labels, Variable = row_order,
+  `Class 1 vs. 0` = alt1$display[idx1],
+  `Class 2 vs. 0` = alt2$display[idx2],
+  `Class 3 vs. 0` = alt3$display[idx3],
+  check.names = FALSE, stringsAsFactors = FALSE)
+
+cap_text  <- "Table 2.7 Multinomial logistic regression results for final model: log-odds estimates by disturbance class comparison"
+note_text <- paste0("Values are log-odds estimates with significance codes appended (* p <= 0.05); ",
+  "estimates without codes are not statistically significant. Reference levels: Treatment = Shelterwood; ",
+  "Forest floor = Not Impacted; Compaction = No Compaction 0-10 cm. Binary indicators coded 1 = present, ",
+  "0 = absent; reference = absent. Observer identity and management unit were incorporated as random ",
+  "effects and are not reported as fixed-effect coefficients; their variance components are reported separately.")
+
+ft <- flextable(table_27) %>%
+  font(fontname = "Times New Roman", part = "all") %>% fontsize(size = 10, part = "all") %>%
+  width(j = 1, width = 0.9) %>% width(j = 2, width = 2.5) %>% width(j = 3:5, width = 1.0) %>%
+  align(j = 1:2, align = "left", part = "all") %>% align(j = 3:5, align = "center", part = "all") %>%
+  add_header_lines(values = note_text) %>% add_header_lines(values = cap_text) %>%
+  font(fontname = "Times New Roman", part = "header") %>% fontsize(size = 10, part = "header") %>%
+  bold(i = 1, part = "header") %>% italic(i = 1:2, part = "header") %>%
+  border_remove() %>%
+  hline_top(border = fp_border(color="black", width=2), part="header") %>%
+  hline(i = 2, border = fp_border(color="black", width=2), part="header") %>%
+  hline_bottom(border = fp_border(color="black", width=2), part="header") %>%
+  hline_bottom(border = fp_border(color="black", width=2), part="body") %>%
+  padding(padding.top=1, padding.bottom=1, padding.left=3, padding.right=3, part="all")
+
+doc <- read_docx() %>% body_add_flextable(ft)
+print(doc, target = "Table27_FinalModel.docx")
+cat("Saved: Table27_FinalModel.docx\n")
+```
+
+#Random Effects Variance Components
+```{r}
+# The variance of the two random effects (reported separately from the fixed effects, per the Table 2.7 note). Larger observer variance means observers differed more in their baseline class assignments; near-zero unit variance means the unit-level geomorphic variables already explain most between-unit differences (Chapter 2, Section 2.3.2.3).
+
+cat("=== Random Effects Variance Components ===\n")
+cat("Observer (X16):\n"); print(round(model_final$VarCov$X16_recode, 3))
+cat("\nManagement unit (LocUnit):\n"); print(round(model_final$VarCov$LocUnit_recode, 8))
+```
+
