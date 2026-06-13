@@ -281,23 +281,23 @@ indat <- indat %>%
       stringr::str_replace_all("\\s*(and|/|&|\\.)\\s*", ",") %>%
       stringr::str_replace_all("\\s*,\\s*", ","),
     X16_recode = factor(case_when(
-      stringr::str_detect(X16_chr, "lobe") &
-        !stringr::str_detect(X16_chr, "quintana|mcree|abrams|kuczmarski") ~ "Joshua Lobe",
-      stringr::str_detect(X16_chr, "abrams") &
-        !stringr::str_detect(X16_chr, "quintana|kuczmarski|mcree")        ~ "Rob Abrams",
-      stringr::str_detect(X16_chr, "mcree") &
-        !stringr::str_detect(X16_chr, "quintana|kuczmarski|abrams")       ~ "Laura McRee",
-      X16_chr %in% c("abrams,mcree", "mcree,abrams", "mcree,l,abrams,r")  ~ "Rob Abrams & Laura McRee Group",
-      X16_chr %in% c("waid")                                              ~ "Waid",
-      stringr::str_detect(X16_chr, "kuczmarski") &
-        !stringr::str_detect(X16_chr, "mcree|abrams")                     ~ "Serena Kuczmarski",
-      X16_chr == "kinsey ashe"                                            ~ "Kinsey Ashe",
-      X16_chr %in% c("a,quintana,r,abrams,l,mcree,m,martin",
-                     "angie,quintana,joshua,lobe",
-                     "laura,m,serena,k,angie,q",
-                     "mcree,kuczmarski",
-                     "mcree,quintana,abrams")                             ~ "Other Multi-Person Groups",
-      TRUE                                                                ~ "Other Observers"
+      stringr::str_detect(X16_chr, "obs1") &
+        !stringr::str_detect(X16_chr, "obs2|obs3|obs4|obs4") ~ "ObsA",
+      stringr::str_detect(X16_chr, "obs5") &
+        !stringr::str_detect(X16_chr, "obs6|obs7|obs8")        ~ "ObsB",
+      stringr::str_detect(X16_chr, "obs9") &
+        !stringr::str_detect(X16_chr, "obs10|obs11|obs12")       ~ "ObsC",
+      X16_chr %in% c("obs13,obs14", "obs15,obs16", "obs17,l,obs18")  ~ "ObsD",
+      X16_chr %in% c("obs19")                                              ~ "ObsE",
+      stringr::str_detect(X16_chr, "obs20") &
+        !stringr::str_detect(X16_chr, "obs21|obs22")                     ~ "ObsF",
+      X16_chr == "obs23"                                            ~ "ObsG",
+      X16_chr %in% c("obs24,obs25,obs26,obs27",
+                     "obs28,obs29",
+                     "obs30,obs31,obs32",
+                     "obs31,obs32",
+                     "obs33,obs34,obs35")                             ~ "ObsH",
+      TRUE                                                                ~ "ObsI"
     ), ordered = FALSE),
 
     # 4.8  Binary indicators.
